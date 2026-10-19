@@ -1,0 +1,172 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Brew Corner</title>
+<style>
+  :root { --bg:#faf7f2; --ink:#2b2420; --muted:#8a7f76; --brand:#6b4f3a; --line:#e6ddd3; --card:#fff; }
+  * { box-sizing:border-box; }
+  body { margin:0; font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif; background:var(--bg); color:var(--ink); }
+  header { display:flex; align-items:center; justify-content:space-between; padding:14px 20px; background:var(--card); border-bottom:1px solid var(--line); position:sticky; top:0; }
+  .logo { font-weight:700; font-size:20px; color:var(--brand); text-decoration:none; }
+  nav a { color:var(--ink); text-decoration:none; margin-left:18px; font-size:14px; }
+  .cart-link { color:#cfc6bd; font-size:13px; }
+  main { max-width:960px; margin:0 auto; padding:24px 20px 60px; }
+  h1 { font-size:26px; margin:0 0 6px; }
+  .sub { color:var(--muted); margin:0 0 22px; }
+  .tabs { display:flex; gap:8px; margin-bottom:18px; flex-wrap:wrap; }
+  .tab { border:1px solid var(--line); background:var(--card); padding:6px 14px; border-radius:999px; cursor:pointer; font-size:14px; }
+  .tab.on { background:var(--brand); color:#fff; border-color:var(--brand); }
+  .grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(200px,1fr)); gap:16px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:12px; overflow:hidden; cursor:pointer; }
+  .swatch { height:110px; display:flex; align-items:center; justify-content:center; font-size:42px; }
+  .card .body { padding:12px 14px; }
+  .card h3 { margin:0 0 4px; font-size:16px; }
+  .card p { margin:0; color:var(--muted); font-size:13px; }
+  .price { font-weight:600; margin-top:8px; }
+  .detail { display:grid; grid-template-columns:1fr 1fr; gap:28px; }
+  @media (max-width:700px){ .detail { grid-template-columns:1fr; } }
+  .detail .swatch { height:260px; border-radius:12px; font-size:90px; }
+  fieldset { border:none; padding:0; margin:0 0 18px; }
+  legend { font-weight:600; margin-bottom:8px; }
+  .opts { display:flex; gap:8px; flex-wrap:wrap; }
+  .opt { border:1px solid var(--line); background:var(--card); padding:8px 12px; border-radius:8px; cursor:pointer; font-size:14px; }
+  .opt.on { border-color:var(--brand); box-shadow:inset 0 0 0 1px var(--brand); }
+  .add { background:#efe9e2; color:#b3a79b; border:none; padding:6px 10px; border-radius:6px; font-size:12px; cursor:pointer; }
+  .btn { background:var(--brand); color:#fff; border:none; padding:12px 18px; border-radius:8px; font-size:15px; cursor:pointer; }
+  .row { display:flex; justify-content:space-between; padding:12px 0; border-bottom:1px solid var(--line); }
+  .row small { color:var(--muted); display:block; }
+  label { display:block; font-size:14px; margin:14px 0 6px; }
+  input, select { width:100%; max-width:360px; padding:10px; border:1px solid var(--line); border-radius:8px; font-size:15px; }
+  .toast { position:fixed; bottom:18px; right:18px; background:var(--ink); color:#fff; padding:8px 12px; border-radius:6px; font-size:12px; opacity:0; transition:opacity .2s; }
+  .toast.show { opacity:.85; }
+  .muted { color:var(--muted); }
+</style>
+</head>
+<body>
+<header>
+  <a class="logo" href="#/">Brew Corner</a>
+  <nav>
+    <a href="#/">Menu</a>
+    <a href="#/about">About</a>
+    <a class="cart-link" href="#/cart" id="cartLink">bag (0)</a>
+  </nav>
+</header>
+<main id="app"></main>
+<div class="toast" id="toast"></div>
+
+<script>
+// Sandbox prototype for usability testing. Not a real shop: no payments, no data is sent anywhere.
+const MENU = [
+  { id:'latte', cat:'Hot', name:'Caffe Latte', desc:'Espresso with steamed milk', price:4.20, emoji:'☕', bg:'#ead9c6' },
+  { id:'flat', cat:'Hot', name:'Flat White', desc:'Velvety microfoam, double shot', price:4.40, emoji:'☕', bg:'#e3cfb8' },
+  { id:'mocha', cat:'Hot', name:'Mocha', desc:'Espresso, chocolate, steamed milk', price:4.80, emoji:'🍫', bg:'#d9bfa6' },
+  { id:'chai', cat:'Hot', name:'Chai Latte', desc:'Spiced black tea with milk', price:4.10, emoji:'🫖', bg:'#efd9c0' },
+  { id:'cold', cat:'Cold', name:'Cold Brew', desc:'Steeped 18 hours, served over ice', price:4.50, emoji:'🧊', bg:'#d6e2ea' },
+  { id:'iced', cat:'Cold', name:'Iced Latte', desc:'Espresso and cold milk over ice', price:4.60, emoji:'🥤', bg:'#dde6ec' },
+  { id:'crois', cat:'Bakery', name:'Butter Croissant', desc:'Baked fresh every morning', price:3.20, emoji:'🥐', bg:'#f3e2c4' },
+  { id:'muffin', cat:'Bakery', name:'Blueberry Muffin', desc:'With a crumble top', price:3.50, emoji:'🧁', bg:'#e6dff0' },
+];
+const SIZES = [ ['Small',0], ['Medium',0.5], ['Large',0.9] ];
+const MILKS = [ ['Whole',0], ['Oat',0.6], ['Almond',0.6], ['Skim',0] ];
+let cart = [];
+let tab = 'All';
+const $ = (s) => document.querySelector(s);
+const money = (n) => '$' + n.toFixed(2);
+
+function toast(msg){ const t=$('#toast'); t.textContent=msg; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),900); }
+function updateCartLink(){ $('#cartLink').textContent = 'bag (' + cart.reduce((a,i)=>a+i.qty,0) + ')'; }
+
+function viewMenu(){
+  const cats = ['All','Hot','Cold','Bakery'];
+  const items = MENU.filter(m => tab==='All' || m.cat===tab);
+  return `<h1>Order ahead, skip the line</h1>
+    <p class="sub">Pick up at Brew Corner, 12 Elm Street. Open 7am to 6pm.</p>
+    <div class="tabs">${cats.map(c=>`<button class="tab ${c===tab?'on':''}" data-tab="${c}">${c}</button>`).join('')}</div>
+    <div class="grid">${items.map(m=>`
+      <div class="card" data-go="${m.id}">
+        <div class="swatch" style="background:${m.bg}">${m.emoji}</div>
+        <div class="body"><h3>${m.name}</h3><p>${m.desc}</p><div class="price">from ${money(m.price)}</div></div>
+      </div>`).join('')}</div>`;
+}
+
+function viewItem(id){
+  const m = MENU.find(x=>x.id===id); if(!m) return viewMenu();
+  const drink = m.cat !== 'Bakery';
+  return `<p><a href="#/" class="muted">← Menu</a></p>
+    <div class="detail">
+      <div class="swatch" style="background:${m.bg}">${m.emoji}</div>
+      <div>
+        <h1>${m.name}</h1><p class="sub">${m.desc}</p>
+        ${drink ? `
+        <fieldset><legend>Size</legend><div class="opts" data-group="size">${SIZES.map((s,i)=>`<button class="opt ${i===0?'on':''}" data-val="${i}">${s[0]}${s[1]?' +'+money(s[1]):''}</button>`).join('')}</div></fieldset>
+        <fieldset><legend>Milk</legend><div class="opts" data-group="milk">${MILKS.map((s,i)=>`<button class="opt ${i===0?'on':''}" data-val="${i}">${s[0]}</button>`).join('')}</div></fieldset>` : ''}
+        <p class="price" id="itemPrice">${money(m.price)}</p>
+        <button class="add" id="addBtn" data-id="${m.id}">add</button>
+      </div>
+    </div>`;
+}
+
+function viewCart(){
+  if(!cart.length) return `<h1>Your bag</h1><p class="sub">Your bag is empty.</p><a class="btn" href="#/" style="text-decoration:none">Browse the menu</a>`;
+  const subtotal = cart.reduce((a,i)=>a+i.price*i.qty,0);
+  return `<h1>Your bag</h1>
+    ${cart.map((i,ix)=>`<div class="row"><div>${i.qty} × ${i.name}<small>${i.opts}</small></div><div>${money(i.price*i.qty)} <button class="opt" data-rm="${ix}" style="padding:2px 8px">×</button></div></div>`).join('')}
+    <div class="row"><strong>Subtotal</strong><strong>${money(subtotal)}</strong></div>
+    <p><button class="btn" id="toCheckout">Continue</button></p>`;
+}
+
+function viewCheckout(){
+  const subtotal = cart.reduce((a,i)=>a+i.price*i.qty,0);
+  return `<h1>Pickup details</h1>
+    <label for="nm">Name for the order</label><input id="nm" placeholder="e.g. Sam">
+    <label for="pt">Pickup time</label>
+    <select id="pt"><option value="">Select</option><option>In 10 minutes</option><option>In 20 minutes</option><option>In 30 minutes</option></select>
+    <p class="muted" style="margin-top:18px">Pay at the counter when you pick up.</p>
+    <div class="row" style="max-width:360px"><span>Subtotal</span><span>${money(subtotal)}</span></div>
+    <div class="row" style="max-width:360px"><span>Service fee</span><span>${money(0.99)}</span></div>
+    <div class="row" style="max-width:360px"><strong>Total</strong><strong>${money(subtotal+0.99)}</strong></div>
+    <p><button class="btn" id="place">Place order</button></p>`;
+}
+
+function viewDone(){ return `<h1>Order placed</h1><p class="sub">Thanks ${window._name||''}! Your order will be ready ${(window._time||'').toLowerCase()}. Pay at the counter.</p><a href="#/" class="muted">Back to menu</a>`; }
+function viewAbout(){ return `<h1>About Brew Corner</h1><p class="sub">A small neighborhood coffee shop. This site is a sandbox prototype used for usability testing.</p>`; }
+
+function render(){
+  const h = location.hash.replace(/^#\/?/,'');
+  const [page,arg] = h.split('/');
+  const app = $('#app');
+  app.innerHTML = page==='item' ? viewItem(arg) : page==='cart' ? viewCart() : page==='checkout' ? viewCheckout() : page==='done' ? viewDone() : page==='about' ? viewAbout() : viewMenu();
+  updateCartLink();
+  window.scrollTo(0,0);
+}
+
+document.addEventListener('click', (e) => {
+  const t = e.target.closest('[data-tab],[data-go],.opt,#addBtn,[data-rm],#toCheckout,#place');
+  if(!t) return;
+  if(t.dataset.tab){ tab=t.dataset.tab; render(); return; }
+  if(t.dataset.go){ location.hash='#/item/'+t.dataset.go; return; }
+  if(t.dataset.rm!==undefined){ cart.splice(+t.dataset.rm,1); render(); return; }
+  if(t.closest('.opts')){ t.parentElement.querySelectorAll('.opt').forEach(o=>o.classList.remove('on')); t.classList.add('on'); return; }
+  if(t.id==='addBtn'){
+    const m = MENU.find(x=>x.id===t.dataset.id);
+    const s = document.querySelector('[data-group=size] .on'), k = document.querySelector('[data-group=milk] .on');
+    const si = s?+s.dataset.val:0, ki = k?+k.dataset.val:0;
+    const price = m.price + (s?SIZES[si][1]:0) + (k?MILKS[ki][1]:0);
+    const opts = s ? SIZES[si][0]+', '+MILKS[ki][0]+' milk' : '';
+    cart.push({ name:m.name, price, qty:1, opts });
+    updateCartLink(); toast('added'); return;
+  }
+  if(t.id==='toCheckout'){ location.hash='#/checkout'; return; }
+  if(t.id==='place'){
+    const nm=$('#nm').value.trim(), pt=$('#pt').value;
+    if(!nm || !pt) return; // no message shown on purpose (sandbox usability issue)
+    window._name=nm; window._time=pt; cart=[]; location.hash='#/done'; return;
+  }
+});
+window.addEventListener('hashchange', render);
+render();
+</script>
+</body>
+</html>
